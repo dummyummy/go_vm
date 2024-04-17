@@ -413,3 +413,31 @@ function initSystem() {
     nRoutines = 0;
     activeRoutines = [];
 }
+
+
+
+
+/* === Test Cases === */
+const test_binop: [any, any] = [{"tag": "binop", "sym": "+", "frst": {"tag": "lit", "val": 1}, "scnd": {"tag": "lit", "val": 1}}, 2];  // 1 + 1 Returns 2
+const test_unop: [any, any] = [{tag: "unop", sym: "!", frst: {tag: "lit", val: true}}, false];  // !true Returns false
+// Define other test cases similarly
+
+/* ==== Run test ==== */
+function test(testcase: [any, any]): void {
+    const program = testcase[0];
+    const expected = testcase[1];
+    const compile_environment = initializeEmptyEnvironment(); // Create an empty environment
+    compile_component(program, compile_environment); // Pass the environment to compile_component
+    execute();
+    const finalValue = RTS.slice(-1)[0];
+    console.log(`Final: ${finalValue}`);
+    if (finalValue == expected) {
+        console.log(`SUCCESS! Got ${finalValue} of type ${typeof RTS.slice(-1)[0]}. Expected ${expected} of type ${typeof expected}`);
+    } else {
+        console.error(`FAILURE! Expected ${expected} but got ${finalValue}`);
+    }
+}
+
+// Run test cases
+test(test_binop);
+test(test_unop);
