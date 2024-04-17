@@ -321,3 +321,95 @@ function execute(): any {
         }
     }
 }
+
+/* ======== GO ROUTINE MANAGEMENT ======== */
+
+// Function to initialize an empty environment
+function initializeEmptyEnvironment(){
+    const newEnv: any[] = [];
+    return newEnv;
+}
+
+// Global variables for managing goroutines
+let environments: any[] = [];
+let pcs: number[] = [];
+let currentRoutine: number;
+let activeRoutines: number[] = [];
+let nRoutines: number = 0;
+let newRTS: any[] = [];
+let newOS: any[] = [];
+
+// Function to create a new goroutine
+function createNewGoRoutine(){
+    const newEnv = initializeEmptyEnvironment();
+    environments[nRoutines] = newEnv;
+    pcs[nRoutines] = 0;
+    activeRoutines.push(nRoutines);
+    return nRoutines++; // returns index of routine created
+}
+
+// Function to create a new goroutine from the current state
+function createNewGoRoutineFromCurrent(){
+    const newEnv = [...E];
+    const newPC = pc;
+    environments[nRoutines] = newEnv;
+    pcs[nRoutines] = newPC;
+    activeRoutines.push(nRoutines);
+    return nRoutines++; // returns index of routine created
+}
+
+// Function to switch to a different routine
+function switchToRoutine(from: number, to: number){
+    // Write back state for from-routine
+    E = environments[from];
+    pcs[from] = pc || 0;
+    // Get state for to-routine
+    pc = pcs[to] !== undefined ? pcs[to] : 0;
+    currentRoutine = to;
+}
+
+// Function to kill a routine
+function killRoutine(routine: number){
+    const index = activeRoutines.indexOf(routine);
+    activeRoutines.splice(index, 1);
+}
+
+// Function to initialize the base routine
+function initBaseRoutine(){
+    initSystem();
+    nRoutines = 0;
+    const baseRoutine = createNewGoRoutine();
+    E = environments[baseRoutine];
+    pc = pcs[baseRoutine];
+    return baseRoutine;
+}
+
+// Function to rotate through active routines
+function rotateRoutine(){
+    const newRoutine = activeRoutines.shift();
+    if (newRoutine !== undefined) {
+        activeRoutines.push(newRoutine);
+        if (currentRoutine !== undefined) {
+            switchToRoutine(currentRoutine, newRoutine);
+        } else {
+            // Handle the case when there is no current routine
+            console.error("No current routine to switch from.");
+        }
+    } else {
+        // Handle the case when there are no active routines
+        console.error("No active routines.");
+    }
+}
+
+// Function to check if a routine is active
+function isActive(routine: number){
+    return activeRoutines.includes(routine);
+}
+
+// Function to initialize system data structures
+function initSystem() {
+    environments = [];
+    pcs = [];
+    nRoutines = 0;
+    activeRoutines = [];
+}
