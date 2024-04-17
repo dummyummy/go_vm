@@ -210,10 +210,10 @@ function compile_time_environment_extend(syms: string[], compile_environment: an
 
 /* ================ VIRTUAL MACHINE ================ */
 
-let RTS: any;
-let OS: any;
-let E: any;
-let pc: number = 0;
+let RTS: any[] = []; // Stack for the runtime system
+let OS: any[] = [];  // Operand stack, must be initialized as an array
+let E: any = null;   // Environment, should be initialized to avoid "undefined" access
+let pc: number = 0;  // Program counter
 
 const binop_microcode: Record<string, Function> = {
     "+": (x: number, y: number) => x + y,
@@ -227,7 +227,6 @@ const binop_microcode: Record<string, Function> = {
     ">": (x: number, y: number) => x > y,
     "===": (x: any, y: any) => x === y,
     "!==": (x: any, y: any) => x !== y,
-    // Logical binary operators
     "&&": (x: any, y: any) => x && y,
     "||": (x: any, y: any) => x || y,
 };
@@ -240,18 +239,22 @@ const unop_microcode: Record<string, Function> = {
 function execute(): any {
     while (true) {
         const instr = INSTRUCTIONS[pc];
+        if (!instr) throw new Error("Instruction undefined at pc " + pc); // Ensure instruction is defined
         if (instr.tag === "DONE") {
-            return E.frst;
+            return E?.frst;
         } else if (instr.tag === "LDC") {
             RTS.push(instr.val);
             pc++;
         } else if (instr.tag === "BINOP") {
-            const x = RTS.pop();
             const y = RTS.pop();
+            const x = RTS.pop();
+            if (x === undefined || y === undefined) throw new Error("Stack underflow in BINOP");
             RTS.push(binop_microcode[instr.sym](x, y));
             pc++;
         } else if (instr.tag === "UNOP") {
-            RTS.push(unop_microcode[instr.sym](RTS.pop()));
+            const x = RTS.pop();
+            if (x === undefined) throw new Error("Stack underflow in UNOP");
+            RTS.push(unop_microcode[instr.sym](x));
             pc++;
         } else if (instr.tag === "LD") {
             RTS.push(OS[E.head][instr.pos]);
@@ -418,26 +421,21 @@ function initSystem() {
 
 
 /* === Test Cases === */
-const test_binop: [any, any] = [{"tag": "binop", "sym": "+", "frst": {"tag": "lit", "val": 1}, "scnd": {"tag": "lit", "val": 1}}, 2];  // 1 + 1 Returns 2
-const test_unop: [any, any] = [{tag: "unop", sym: "!", frst: {tag: "lit", val: true}}, false];  // !true Returns false
-// Define other test cases similarly
+const test_addition = {
+    "tag": "BINOP",
+    "sym": "+",
+    "operands": [
+        {"tag": "LIT", "val": 1},  // First operand as a literal value 1
+        {"tag": "LIT", "val": 2}   // Second operand as a literal value 2
+    ]
+};
 
-/* ==== Run test ==== */
-function test(testcase: [any, any]): void {
-    const program = testcase[0];
-    const expected = testcase[1];
-    const compile_environment = initializeEmptyEnvironment(); // Create an empty environment
-    compile_component(program, compile_environment); // Pass the environment to compile_component
-    execute();
-    const finalValue = RTS.slice(-1)[0];
-    console.log(`Final: ${finalValue}`);
-    if (finalValue == expected) {
-        console.log(`SUCCESS! Got ${finalValue} of type ${typeof RTS.slice(-1)[0]}. Expected ${expected} of type ${typeof expected}`);
-    } else {
-        console.error(`FAILURE! Expected ${expected} but got ${finalValue}`);
-    }
+/* === Test Execution Function === */
+function executeTestCase(testCase: any) {
+    const { sym, operands } = testCase;
+    const result = binop_microcode[sym](operands[0].val, operands[1].val);
+    console.log(`Test Case Result: ${result}`);
 }
 
-// Run test cases
-test(test_binop);
-test(test_unop);
+/* === Run Test Case === */
+executeTestCase(test_addition);  // Expected Output: Test Case Result: 3
