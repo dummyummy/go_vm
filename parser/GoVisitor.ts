@@ -53,7 +53,7 @@ import { ArgumentsContext } from "./GoParser";
 
 export interface GoNode {
     node: string;
-    body?: GoNode | Array<GoNode> | Object | null;
+    body?: GoNode | Object | null;
     packageName?: string;
     importSpecs?: Array<GoNode | null> | null;
     importPath?: string;
@@ -75,7 +75,7 @@ export interface GoNode {
     exprs?: Array<GoNode | null> | GoNode | null;
     parent?: GoNode | Object| null;
     attr?: GoNode | null;
-    func?: GoNode | Object | null;
+    func?: GoNode | null;
     args?: GoNode | null;
     funcType?: GoNode | string | null;
     value?: string | null;
@@ -86,6 +86,9 @@ export interface GoNode {
     dir?: string | null;
     chan?: GoNode | null;
     op?:string | null;
+    operand?: GoNode | null;
+    lhs?: GoNode | null;
+    rhs?: GoNode | null;
 }
 
 export default class GoVisitor extends GoBaseVisitor<GoNode> {
@@ -145,7 +148,7 @@ export default class GoVisitor extends GoBaseVisitor<GoNode> {
         }
     };
     visitResult = (ctx: ResultContext): Array<GoNode | null> | GoNode | string | null => {
-        return (ctx == null) ? null
+        return (ctx == null) ? []
             : ctx.type_()
             ? this.visitType_(ctx.type_())
             : this.visitParameters(ctx.parameters())
@@ -173,9 +176,9 @@ export default class GoVisitor extends GoBaseVisitor<GoNode> {
     visitStatementList = (ctx: StatementListContext): GoNode | null => {
         return {
             node: "StatementList",
-            statements: ctx.statement_list().map((stat) => { 
+            statements: ctx ? ctx.statement_list().map((stat) => { 
                 return this.visitStatement(stat);
-            })
+            }) : []
         };
     };
     visitStatement = (ctx: StatementContext): GoNode | null => {
@@ -214,7 +217,7 @@ export default class GoVisitor extends GoBaseVisitor<GoNode> {
     }
     visitBreakStmt = (ctx: BreakStmtContext): GoNode | null => {
         return {
-            node: "BreamStatement",
+            node: "BreakStatement",
         };
     };
     visitContinueStmt = (ctx: ContinueStmtContext): GoNode | null => {
