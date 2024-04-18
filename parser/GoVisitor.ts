@@ -75,7 +75,7 @@ export interface GoNode {
     exprs?: Array<GoNode | null> | GoNode | null;
     parent?: GoNode | Object| null;
     attr?: GoNode | null;
-    func?: GoNode | Object | null;
+    func?: GoNode | null;
     args?: GoNode | null;
     funcType?: GoNode | string | null;
     value?: string | null;

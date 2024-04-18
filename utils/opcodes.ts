@@ -12,15 +12,19 @@ export enum OpCodes {
     JMP,    // address(absolute)
     JOF,    // address(absolute)
     BREAK,
+    BTAG,   // break tag
     CONT,
+    CTAG,   // continue tag
     RESET,  // do context switch
     RET,
     CALL,
     POP,    // pop one element from the operand stack
     ASSIGN, // assign value to an identifier
-    GO,     // go routine
     ENTER_SCOPE,
-    EXIT_SCOPE
+    EXIT_SCOPE,
+
+    GO,     // go routine
+    SEND,   // send to channel
 }
 
 export default OpCodes
