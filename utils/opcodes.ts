@@ -5,15 +5,20 @@ export enum OpCodes {
     UNOP,
     BINOP,
     RELOP,
-    LOGOP,
     BRT,    // offset(relative)
     BRF,    // offset(relative)
     BR,     // offset(relative)
     JMP,    // address(absolute)
+    BREAK,
+    CONT,
+    RESET,
     RET,
     CALL,
     POP,    // pop one element from the operand stack
     ASSIGN, // assign value to an identifier
+    GO,     // go routine
+    ENTER_SCOPE,
+    EXIT_SCOPE
 }
 
 export default OpCodes

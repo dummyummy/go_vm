@@ -1,16 +1,15 @@
 import parse from "./parser";
+import compile from "./compiler";
 
 const programStr: string = 
 `
-// You can edit this code!
-// Click here and start typing.
 package main
 
-import "fmt"
-
 func main() {
-	fmt.Println("Hello, 世界")
+    var a int = 1
 }
 `
 
-console.dir(parse(programStr))
+let ast = parse(programStr);
+let instrs = compile(ast, [], []);
+console.log(instrs);
