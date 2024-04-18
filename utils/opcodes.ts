@@ -1,4 +1,5 @@
 export enum OpCodes {
+    NOP,
     LDC,    // load basic literal
     LDF,    // load function literal
     LD,     // load identifier
@@ -9,9 +10,10 @@ export enum OpCodes {
     BRF,    // offset(relative)
     BR,     // offset(relative)
     JMP,    // address(absolute)
+    JOF,    // address(absolute)
     BREAK,
     CONT,
-    RESET,
+    RESET,  // do context switch
     RET,
     CALL,
     POP,    // pop one element from the operand stack

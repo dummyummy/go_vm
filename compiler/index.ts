@@ -65,7 +65,7 @@ function unpack_param_decls(params: GoNode[]): [(string | null)[], string[]] {
     return [idents, types]
 }
 
-export function compile(ast: GoNode, ce: CompilationEnv, instructions: Instruction[]) {
+export function compile(ast: GoNode, ce: CompilationEnv = [], instructions: Instruction[] = []) {
     switch (ast.node) {
         case "Program":
             let declarationDecls = (ast.body as any)["declarationDecls"] as GoNode[];
@@ -108,6 +108,7 @@ export function compile(ast: GoNode, ce: CompilationEnv, instructions: Instructi
             const locals = scan_out_declarations(ast.body as GoNode)
             instructions.push({
                 tag: 'ENTER_SCOPE',
+                num: locals.length
             });
             compile(ast.body as GoNode, compile_time_environment_extend(ce, locals), instructions);
             instructions.push({
@@ -181,10 +182,18 @@ export function compile(ast: GoNode, ce: CompilationEnv, instructions: Instructi
             });
             break;
         case "UnaryOp":
+            compile(ast.operand!, ce, instructions);
+            instructions.push({ tag: 'UNOP', sym: ast.op! });
             break
         case "BinaryOp":
+            compile(ast.lhs!, ce, instructions);
+            compile(ast.rhs!, ce, instructions);
+            instructions.push({ tag: 'BINOP', sym: ast.op! });
             break;
         case "RelOp":
+            compile(ast.lhs!, ce, instructions);
+            compile(ast.rhs!, ce, instructions);
+            instructions.push({ tag: 'RELOP', sym: ast.op! });
             break;
         case "LogicOp":
             break;
@@ -200,12 +209,26 @@ export function compile(ast: GoNode, ce: CompilationEnv, instructions: Instructi
             const jmp_instruction = { tag: 'JMP' } as Instruction;
             instructions.push(jmp_instruction);
             compile(ast.body as GoNode, ce, instructions);
+            instructions.push({ tag: 'LDC', val: null });
+            instructions.push({ tag: 'RESET' });
+            jmp_instruction.addr = instructions.length;
             break;
         case "ReturnStatement":
             break;
         case "IfStatement":
+            compile(ast.pred!, ce, instructions);
+            const jump_on_false_instruction = { tag: 'JOF' } as Instruction;
+            instructions.push(jump_on_false_instruction);
+            compile(ast.tb!, ce, instructions);
+            const jump_instruction = { tag: 'JMP' } as Instruction;
+            instructions.push(jump_instruction);
+            const alternative_address = instructions.length;
+            jump_on_false_instruction.addr = alternative_address;
+            compile(ast.fb!, ce, instructions);
+            jump_instruction.addr = instructions.length;
             break;
         default:
+            instructions.push({ tag: 'NOP' });
             break;
     }
     return instructions;

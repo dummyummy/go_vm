@@ -86,6 +86,9 @@ export interface GoNode {
     dir?: string | null;
     chan?: GoNode | null;
     op?:string | null;
+    operand?: GoNode | null;
+    lhs?: GoNode | null;
+    rhs?: GoNode | null;
 }
 
 export default class GoVisitor extends GoBaseVisitor<GoNode> {

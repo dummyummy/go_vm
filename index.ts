@@ -11,5 +11,5 @@ func main() {
 `
 
 let ast = parse(programStr);
-let instrs = compile(ast, [], []);
+let instrs = compile(ast);
 console.log(instrs);
