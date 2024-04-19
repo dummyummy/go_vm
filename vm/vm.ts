@@ -429,13 +429,3 @@ const test_addition = {
         {"tag": "LIT", "val": 0}   // Second operand as a literal value 2
     ]
 };
-
-/* === Test Execution Function === */
-function executeTestCase(testCase: any) {
-    const { sym, operands } = testCase;
-    const result = binop_microcode[sym](operands[0].val, operands[1].val);
-    console.log(`Test Case Result: ${result}`);
-}
-
-/* === Run Test Case === */
-executeTestCase(test_addition);  // Expected Output: Test Case Result: 3
