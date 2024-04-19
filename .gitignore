@@ -1,5 +1,6 @@
-node_modules
+.vscode
 .idea
+node_modules
 **/*.d.ts
 **/*.js
 **/*.js.map

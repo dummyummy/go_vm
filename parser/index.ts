@@ -1,4 +1,4 @@
-import { CharStreams, CommonTokenStream } from "antlr4";
+import { CharStreams, CommonTokenStream } from "antlr4"
 import GoLexer from "./GoLexer";
 import GoParser from "./GoParser";
 import GoVisitor, { GoNode } from "./GoVisitor";

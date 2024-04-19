@@ -7,13 +7,13 @@
     "@babel/cli": "^7.24.1",
     "@babel/core": "^7.24.4",
     "@babel/preset-env": "^7.24.4",
-    "antlr4": "^4.13.1-patch-1",
     "typescript": "^5.4.5"
   },
   "scripts": {
     "build": "npx tsc --project tsconfig.json"
   },
   "dependencies": {
-    "@types/node": "^20.12.7"
+    "@types/node": "^20.12.7",
+    "antlr4": "^4.13.1-patch-1"
   }
 }
