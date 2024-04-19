@@ -1084,9 +1084,9 @@ browserslist@^4.22.2, browserslist@^4.23.0:
     update-browserslist-db "^1.0.13"
 
 caniuse-lite@^1.0.30001587:
-  version "1.0.30001610"
-  resolved "https://registry.yarnpkg.com/caniuse-lite/-/caniuse-lite-1.0.30001610.tgz#2f44ed6e21d359e914271ae35b68903632628ccf"
-  integrity sha512-QFutAY4NgaelojVMjY63o6XlZyORPaLfyMnsl3HgnWdJUcX6K0oaJymHjH8PT5Gk7sTm8rvC/c5COUQKXqmOMA==
+  version "1.0.30001611"
+  resolved "https://registry.yarnpkg.com/caniuse-lite/-/caniuse-lite-1.0.30001611.tgz#4dbe78935b65851c2d2df1868af39f709a93a96e"
+  integrity sha512-19NuN1/3PjA3QI8Eki55N8my4LzfkMCRLgCVfrl/slbSAchQfV0+GwjPrK3rq37As4UCLlM/DHajbKkAqbv92Q==
 
 chalk@^2.4.2:
   version "2.4.2"
@@ -1154,9 +1154,9 @@ debug@^4.1.0, debug@^4.1.1, debug@^4.3.1:
     ms "2.1.2"
 
 electron-to-chromium@^1.4.668:
-  version "1.4.738"
-  resolved "https://registry.yarnpkg.com/electron-to-chromium/-/electron-to-chromium-1.4.738.tgz#9a7fca98abaee61e20c9c25013d5ce60bb533436"
-  integrity sha512-lwKft2CLFztD+vEIpesrOtCrko/TFnEJlHFdRhazU7Y/jx5qc4cqsocfVrBg4So4gGe9lvxnbLIoev47WMpg+A==
+  version "1.4.744"
+  resolved "https://registry.yarnpkg.com/electron-to-chromium/-/electron-to-chromium-1.4.744.tgz#d19cdfdbd81bd800b71773702bcbaa129a3b2e8f"
+  integrity sha512-nAGcF0yeKKfrP13LMFr5U1eghfFSvFLg302VUFzWlcjPOnUYd52yU5x6PBYrujhNbc4jYmZFrGZFK+xasaEzVA==
 
 escalade@^3.1.1:
   version "3.1.2"
