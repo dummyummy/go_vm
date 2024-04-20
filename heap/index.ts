@@ -81,7 +81,7 @@ export class Heap {
     constructor(bytes: number) {
         if (bytes % 8 !== 0) throw new Error("heap bytes must be divisible by 8");
         this._data = new Uint8Array(bytes);
-        this.data = this._data.buffer as ArrayBuffer;
+        this.data = this._data.buffer;
         this.view = new DataView(this.data);
         this.free = 0;
         this.stringPool = {};
@@ -324,6 +324,16 @@ export class Heap {
         return new_env_address;
     };
 
+    Environment_duplicate = (env_address: number): number => {
+        const old_size = this.get_size(env_address) - 1;
+        const new_env_address = this.allocate_Environment(old_size);
+        let i: number;
+        for (i = 0; i < old_size; i++) {
+            this.set_child(new_env_address, i, this.get_child(env_address, i));
+        }
+        return new_env_address;
+    };
+
     // number
     // [1 byte tag, 4 bytes unused,
     //  2 bytes #children, 1 byte unused]
@@ -337,94 +347,90 @@ export class Heap {
 
     // channel
     // [1 byte tag, 2 bytes buffer count, 1 byte is reading, 1 byte is writing,
-    // 2 bytes #children, 1 byte is forwarded]
+    // 2 bytes #children, 1 byte unused, 4 bytes FIFO head, 4 bytes FIFO tail]
     // children are buffered items
     // like the STL vector in C++
-    // we fisrt allocate 16 children for the channel
+    // we fisrt allocate 16 slots for the channel
     // if a channel runs out of buffer space, allocate a new channel with 32 childs
-    // if a channel is forwarded, its first child becomes the forwarding address
+    // if a channel is forwarded, its first slot becomes the forwarding address
     // note: #children is 0
-    allocate_Channel = (buffer: number = 500): number => {
-        const channel_address = this.allocate(HeapNodeTag.Channel_tag, buffer + 1);
+    allocate_Channel = (buffer: number = 1): number => {
+        const channel_address = this.allocate(HeapNodeTag.Channel_tag, buffer + 2);
         // Set ready to read and written to to 0 (false)
         this.set_2_bytes_at_offset(channel_address, 1, 0); // buffer count
-        this.set_byte_at_offset(channel_address, 7, 0); // is forwarded
         this.set_byte_at_offset(channel_address, 3, 0); // is reading
         this.set_byte_at_offset(channel_address, 4, 0); // is writing
+        this.set_4_bytes_at_offset(channel_address + 1, 0, 0);
+        this.set_4_bytes_at_offset(channel_address + 1, 4, 0);
         return channel_address;
     };
 
-    Channel_test_and_set_reading = (chan: HeapAddress) => Atomics.compareExchange(this._data, chan * word_size + 3, 0, 1);
-    Channel_test_and_set_writing = (chan: HeapAddress) => Atomics.compareExchange(this._data, chan * word_size + 4, 0, 1);
+    Channel_comp_and_swap_reading = (chan: HeapAddress) => Atomics.compareExchange(this._data, chan * word_size + 3, 0, 1);
+    Channel_comp_and_swap_writing = (chan: HeapAddress) => Atomics.compareExchange(this._data, chan * word_size + 4, 0, 1);
     Channel_stop_reading = (chan: HeapAddress) => Atomics.store(this._data, chan * word_size + 3, 0);
     Channel_stop_writing = (chan: HeapAddress) => Atomics.store(this._data, chan * word_size + 4, 0);
 
-    Channel_forwarded = (chan: HeapAddress) => this.get_byte_at_offset(chan, 7) == 1;
+    Channel_size = (chan: HeapAddress) => this.get_number_of_children(chan) - 1;
+    Channel_count = (chan: HeapAddress) => this.get_2_bytes_at_offset(chan, 1);
+    Channel_head = (chan: HeapAddress) => this.get_4_bytes_at_offset(chan + 1, 0);
+    Channel_tail = (chan: HeapAddress) => this.get_4_bytes_at_offset(chan + 1, 4);
 
     Channel_write = async (chan: HeapAddress, val: HeapAddress) => {
-        const tas = async () => {
-            if (this.Channel_forwarded(chan)) chan = this.get_child(chan, 0);
-            if (this.Channel_test_and_set_writing(chan)) setTimeout(tas, 1);
-        }
-        await tas();
-        if (this.Channel_full(chan)) {
-            chan = this.Channel_copy_and_grow(chan);
-        }
-        this.set_child(chan, this.Channel_count(chan), val);
+        const cas = async () => {
+            while (this.Channel_comp_and_swap_writing(chan)) {
+                await new Promise(resolve => setTimeout(resolve, 1));
+            }
+        };
+        await cas();
+        const wait_full = async () => {
+            while (this.Channel_full(chan)) {
+                await new Promise(resolve => setTimeout(resolve, 1));
+            }
+        };
+        await wait_full();
+        // start critical segment
+        let tail = this.Channel_tail(chan);
+        this.set_child(chan, tail + 1, val);
+        tail = (tail + 1) % this.Channel_size(chan);
+        this.set_4_bytes_at_offset(chan + 1, 4, tail);
         this.set_2_bytes_at_offset(chan, 1, this.Channel_count(chan) + 1);
         this.Channel_stop_writing(chan);
+        // end critical segment
         return chan;
     }
 
     Channel_read = async (chan: HeapAddress) => {
-        const tas = async () => {
-            if (this.Channel_forwarded(chan)) chan = this.get_child(chan, 0);
-            if (this.Channel_test_and_set_reading(chan)) setTimeout(tas, 1);
+        const cas = async () => {
+            while (this.Channel_comp_and_swap_reading(chan)) {
+                await new Promise(resolve => setTimeout(resolve, 1));
+            }
         };
-        await tas();
+        await cas();
         const wait_empty = async () => {
-            if (this.Channel_count(chan) == 0) setTimeout(wait_empty, 1);
+            while (this.Channel_empty(chan)) {
+                await new Promise(resolve => setTimeout(resolve, 1));
+            }
         };
         await wait_empty();
         // start critical segment
-        if (this.Channel_count(chan) == 0) {
-            this.Channel_stop_reading(chan);
-            return this.False;
-        }
-        let val = this.get_child(chan, this.Channel_count(chan) - 1);
+        let head = this.Channel_head(chan);
+        let val = this.get_child(chan, head + 1);
+        head = (head + 1) % this.Channel_size(chan);
+        this.set_4_bytes_at_offset(chan + 1, 0, head);
         this.set_2_bytes_at_offset(chan, 1, this.Channel_count(chan) - 1);
         this.Channel_stop_reading(chan);
         // end critical segment
         return val;
     }
 
-    Channel_count = (chan: HeapAddress): number => {
-        return this.get_2_bytes_at_offset(chan, 1);
-    }
-
-    private Channel_copy_and_grow = (src: HeapAddress): HeapAddress => {
-        let src_buffer_size = this.get_number_of_children(src);
-        let src_buffer_count = this.Channel_count(src);
-        let dst_buffer_size = 2 * src_buffer_size;
-        let dst = this.allocate_Channel(dst_buffer_size);
-        for (let i = 0; i < src_buffer_count; i++) {
-            this.set_child(dst, i, this.get_child(src, i));
-        }
-        this.set_byte_at_offset(src, 7, 1); // is forwarded
-        this.set_child(src, 0, dst);
-        this.set_byte_at_offset(dst, 7, 0); // is forwarded
-        this.set_byte_at_offset(dst, 3, this.get_byte_at_offset(src, 6)); // is reading
-        this.set_byte_at_offset(dst, 4, this.get_byte_at_offset(src, 7)); // is writing
-        return dst;
-    }
 
     private Channel_full = (chan: HeapAddress): boolean => {
-        return this.Channel_count(chan) >= this.get_number_of_children(chan);
+        return this.Channel_count(chan) >= this.Channel_size(chan);
     }
 
-    // private Channel_empty = (chan: HeapAddress): boolean => {
-    //     return this.Channel_count(chan) > 0;
-    // }
+    private Channel_empty = (chan: HeapAddress): boolean => {
+        return this.Channel_count(chan) == 0;
+    }
 
     /********* Debugging *********/
     // for debugging: display all bits of the heap

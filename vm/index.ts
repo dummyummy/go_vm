@@ -11,19 +11,7 @@ interface OperandStack<T> {
     push(item: T): void;
 }
 
-interface Go_Runnable {
-    PC: number;
-    OS: OperandStack<number>;
-    E: HeapAddress;
-    RTS: HeapAddress[];
-    H: Heap; // shared heap
-    instrs: Instruction[];
-    builtin_array: Function[];
-    exec: (instr: Instruction) => Promise<void>;
-    run: (instrs: Instruction[]) => Promise<JSValue>;
-}
-
-export class GoVM implements Go_Runnable {
+export class GoVM {
     /* ================ MICROCODE AND PRIMITIVE FUNCTIONS ================= */
     binop_microcode: Record<string, Function> = {
         "+": (x: number, y: number) => x + y,
@@ -90,10 +78,7 @@ export class GoVM implements Go_Runnable {
         const builtin_funcs: Record<string, Function> = {
             // at present we can only declare channel with make
             make: async (arity: number) => { // make(chan _type)
-                const args = [];
-                while (arity-- > 0) args.push(this.OS.pop()!);
-                args.reverse();
-                return this.H.allocate_Channel();
+                return this.H.allocate_Channel(arity == 0 ? 1 : this.H.address_to_JS_value(this.OS.pop()!) as number);
             },
             println: async (arity: number) => {
                 const args = [];
@@ -130,11 +115,8 @@ export class GoVM implements Go_Runnable {
             this.H.address_to_JS_value(v2)
         )) as HeapAddress;
     }
-    private async apply_send(v: HeapAddress, c: HeapAddress, pos: [number, number]) {
-        let ret_addr = await this.H.Channel_write(c, v);
-        if (ret_addr !== c) {
-            this.H.set_Environment_value(this.E, pos, ret_addr);
-        }
+    private async apply_send(v: HeapAddress, c: HeapAddress) {
+        return await this.H.Channel_write(c, v);
     }
     private apply_relop(op: string, v2: HeapAddress, v1: HeapAddress): HeapAddress {
         return this.H.JS_value_to_address(this.relop_microcode[op](
@@ -252,11 +234,11 @@ export class GoVM implements Go_Runnable {
                         frame_address,
                         go_routine.H.get_Closure_environment(fun),
                     );
-                    go_routine.run(this.instrs);
+                    await go_routine.run(this.instrs);
                 }
                 break;
             case 'SEND':
-                this.apply_send(this.OS.pop()!, this.OS.pop()!, instr.pos!);
+                this.apply_send(this.OS.pop()!, this.OS.pop()!);
                 this.OS.push(this.H.True);
                 break;
             // TODO: continue and break
@@ -286,8 +268,8 @@ export class GoVM implements Go_Runnable {
 class GoRoutine extends GoVM {
     constructor(PC: number, E: HeapAddress, H: Heap, instrs: Instruction[]) {
         super(0);
-        this.E = E;
         this.H = H;
+        this.E = this.H.Environment_duplicate(E);
         // a gorountine has different PC, OS and RTS
         this.PC = PC;
         // OS and RTS are default initialized

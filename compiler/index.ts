@@ -153,6 +153,17 @@ export function compile(ast: GoNode, ce: CompilationEnv = global_compile_environ
             break;
         case "ForStatement":
             var for_clauses: GoNode[] = []
+            if (ast.clause == null) {
+                ast.clause = {
+                    node: "ForClause",
+                    init: null,
+                    expr: { node: 'Lit', type: 'bool', value: 'true' },
+                    post: null
+                } as GoNode
+            }
+            if (ast.clause.expr == null) {
+                ast.clause.expr = { node: 'Lit', type: 'bool', value: 'true' };
+            }
             if (ast.clause?.init) for_clauses.push(ast.clause.init);
             if (ast.clause?.expr) for_clauses.push(ast.clause.expr);
             if (ast.clause?.post) for_clauses.push(ast.clause.post);
@@ -383,7 +394,7 @@ export function compile(ast: GoNode, ce: CompilationEnv = global_compile_environ
             instructions.push(jump_instruction);
             const alternative_address = instructions.length;
             jump_on_false_instruction.addr = alternative_address;
-            compile(ast.fb!, ce, instructions);
+            if (ast.fb) compile(ast.fb, ce, instructions);
             jump_instruction.addr = instructions.length;
             break;
         case "SendStatement":
