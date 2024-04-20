@@ -267,15 +267,6 @@ export class Heap {
     };
     get_Callframe_environment = (address: number): number => this.get_child(address, 0);
     get_Callframe_pc = (address: number): number => this.get_2_bytes_at_offset(address, 2);
-    // Same as above but set first unused byte (at offset 1)
-    // to 1 to show it's a gocall frame. 0 means normal frame
-    allocate_Gocallframe = (env: number, pc: number): number => {
-        const address = this.allocate(HeapNodeTag.Callframe_tag, 2);
-        this.set_2_bytes_at_offset(address, 2, pc);
-        this.set_byte_at_offset(address, 1, 1); // Set unused byte to 1 to show gocall
-        this.set(address + 1, env);
-        return address;
-    };
 
     // environment frame
     // [1 byte tag, 4 bytes unused,
@@ -323,30 +314,6 @@ export class Heap {
         return new_env_address;
     };
 
-    // Added to handle goroutines
-    // Copy an environment by doing like the above 
-    // but without extending it
-    Environment_copy = (env_address: number): number => {
-        const old_size = this.get_size(env_address);
-        const new_env_address = this.allocate_Environment(old_size - 1);
-        for (let i = 0; i < old_size - 1; i++) {
-            this.set_child(new_env_address, i, this.get_child(env_address, i));
-        }
-        return new_env_address;
-    };
-
-    // pair
-    // [1 byte tag, 4 bytes unused,
-    //  2 bytes #children, 1 byte unused]
-    // followed by head and tail addresses, one word each
-    allocate_Pair = (hd: number, tl: number): number => {
-        const pair_address = this.allocate(HeapNodeTag.Pair_tag, 3);
-        this.set_child(pair_address, 0, hd);
-        this.set_child(pair_address, 1, tl);
-        return pair_address;
-    };
-
-
     // number
     // [1 byte tag, 4 bytes unused,
     //  2 bytes #children, 1 byte unused]
@@ -358,57 +325,89 @@ export class Heap {
         return number_address;
     };
 
-
     // channel
-    // [1 byte tag, 1 byte ready to read, 1 byte ready to write,
-    // 2 bytes #children (unused), 1 byte unused]
-    // followed by the value sent on the channel
-    // followed by the index of a dormant routine
-    // note: children is 0
-    allocate_Channel = (): number => {
-        const channel_address = this.allocate(HeapNodeTag.Channel_tag, 3);
+    // [1 byte tag, 2 bytes buffer count, 1 byte is forwarded
+    // 2 bytes #children, 1 byte is reading, 1 byte is writing]
+    // children are buffered items
+    // like the STL vector in C++
+    // we fisrt allocate 16 children for the channel
+    // if a channel runs out of buffer space, allocate a new channel with 32 childs
+    // if a channel is forwarded, its first child becomes the forwarding address
+    // note: #children is 0
+    allocate_Channel = (buffer: number = 16): number => {
+        const channel_address = this.allocate(HeapNodeTag.Channel_tag, buffer + 1);
         // Set ready to read and written to to 0 (false)
-        this.set_byte_at_offset(channel_address, 1, 0);
-        this.set_byte_at_offset(channel_address, 2, 0);
+        this.set_2_bytes_at_offset(channel_address, 1, 0); // buffer count
+        this.set_byte_at_offset(channel_address, 3, 0); // is forwarded
+        this.set_byte_at_offset(channel_address, 6, 0); // is reading
+        this.set_byte_at_offset(channel_address, 7, 0); // is writing
         return channel_address;
     };
 
+    Channel_test_and_set_reading = (chan: HeapAddress) => Atomics.compareExchange(this.data as Uint8Array, chan * word_size + 6, 0, 1);
+    Channel_test_and_set_writing = (chan: HeapAddress) => Atomics.compareExchange(this.data as Uint8Array, chan * word_size + 7, 0, 1);
+    Channel_stop_reading = (chan: HeapAddress) => Atomics.store(this.data as Uint8Array, chan * word_size + 6, 0);
+    Channel_stop_writing = (chan: HeapAddress) => Atomics.store(this.data as Uint8Array, chan * word_size + 7, 0);
 
-    write_to_channel = (channel_address: number, value: number): void => {
-        // Set written to and write value
-        this.set_byte_at_offset(channel_address, 2, 1);
-        this.set(channel_address + 1, value);
-    };
+    Channel_forwarded = (chan: HeapAddress) => this.get_byte_at_offset(chan, 3) == 1;
 
-    set_channel_read = (channel_address: number): void => {
-        // Set channel to ready to read
-        this.set_byte_at_offset(channel_address, 1, 1);
-    };
+    Channel_write = (chan: HeapAddress, val: HeapAddress): HeapAddress => {
+        while (this.Channel_test_and_set_writing(chan)) {
+            if (this.Channel_forwarded(chan)) chan = this.get_child(chan, 0);
+        } // spin lock
+        if (this.Channel_full(chan)) {
+            chan = this.Channel_copy_and_grow(chan);
+        }
+        this.set_child(chan, val, this.Channel_count(chan));
+        this.set_2_bytes_at_offset(chan, 1, this.Channel_count(chan) + 1);
+        this.Channel_stop_writing(chan);
+        return chan;
+    }
 
-    read_channel = (channel_address: number): number => {
-        // Set ready to read from and read value
-        return this.get(channel_address + 1);
-    };
+    Channel_read = (chan: HeapAddress): HeapAddress => {
+        while (this.Channel_test_and_set_reading(chan)) {
+            if (this.Channel_forwarded(chan)) chan = this.get_child(chan, 0);
+        }
+        while (this.Channel_count(chan) == 0);
+        // start critical segment
+        if (this.Channel_count(chan) == 0) {
+            this.Channel_stop_reading(chan);
+            return this.False;
+        }
+        let val = this.get_child(chan, this.Channel_count(chan) - 1);
+        this.set_2_bytes_at_offset(chan, 1, this.Channel_count(chan) - 1);
+        this.Channel_stop_reading(chan);
+        // end critical segment
+        return val;
+    }
 
-    is_channel_read = (channel_address: number): boolean => {
-        // Check if channel is ready to read from
-        const status = this.get_byte_at_offset(channel_address, 1);
-        return status === 1;
-    };
+    Channel_count = (chan: HeapAddress): number => {
+        return this.get_2_bytes_at_offset(chan, 1);
+    }
 
-    is_channel_written = (channel_address: number): boolean => {
-        // Check if channel has been written to
-        const status = this.get_byte_at_offset(channel_address, 2);
-        return status === 1;
-    };
+    private Channel_copy_and_grow = (src: HeapAddress): HeapAddress => {
+        let src_buffer_size = this.get_number_of_children(src);
+        let src_buffer_count = this.Channel_count(src);
+        let dst_buffer_size = 2 * src_buffer_size;
+        let dst = this.allocate_Channel(dst_buffer_size);
+        for (let i = 0; i < src_buffer_count; i++) {
+            this.set_child(dst, i, this.get_child(src, i));
+        }
+        this.set_byte_at_offset(src, 3, 1); // is forwarded
+        this.set_child(src, 0, dst);
+        this.set_byte_at_offset(dst, 3, 0); // is forwarded
+        this.set_byte_at_offset(dst, 6, this.get_byte_at_offset(src, 6)); // is reading
+        this.set_byte_at_offset(dst, 7, this.get_byte_at_offset(src, 7)); // is writing
+        return dst;
+    }
 
-    set_channel_dormant_routine = (channel: number, routine: number): void => {
-        this.set_child(channel, 1, routine);
-    };
+    private Channel_full = (chan: HeapAddress): boolean => {
+        return this.Channel_count(chan) >= this.get_number_of_children(chan);
+    }
 
-    get_channel_dormant_routine = (channel: number): number => {
-        return this.get_child(channel, 1);
-    };
+    // private Channel_empty = (chan: HeapAddress): boolean => {
+    //     return this.Channel_count(chan) > 0;
+    // }
 
     /********* Debugging *********/
     // for debugging: display all bits of the heap

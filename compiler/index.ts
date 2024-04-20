@@ -389,8 +389,9 @@ export function compile(ast: GoNode, ce: CompilationEnv = global_compile_environ
             break;
         case "SendStatement":
             compile(ast.chan!, ce, instructions);
+            const chan_pos = instructions.at(-1)?.pos;
             compile(ast.expr!, ce, instructions);
-            instructions.push({ tag: 'SEND' });
+            instructions.push({ tag: 'SEND', pos: chan_pos });
             break;
         // BUG
         // inc and dec can not be simply compiled like this!

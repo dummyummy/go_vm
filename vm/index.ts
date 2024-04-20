@@ -11,32 +11,43 @@ interface OperandStack<T> {
     push(item: T): void;
 }
 
-/* ================ MICROCODE AND PRIMITIVE FUNCTIONS ================= */
-const binop_microcode: Record<string, Function> = {
-    "+": (x: number, y: number) => x + y,
-    "*": (x: number, y: number) => x * y,
-    "-": (x: number, y: number) => x - y,
-    "/": (x: number, y: number) => x / y,
-    "%": (x: number, y: number) => x % y,
-};
+interface Go_Runnable {
+    PC: number;
+    OS: OperandStack<number>;
+    E: HeapAddress;
+    RTS: HeapAddress[];
+    H: Heap; // shared heap
+    instrs: Instruction[];
+    builtin_array: Function[];
+    exec: (instr: Instruction) => Promise<void>;
+    run: (instrs: Instruction[]) => Promise<JSValue>;
+}
 
-const relop_microcode: Record<string, Function> = {
-    "<": (x: number, y: number) => x < y,
-    "<=": (x: number, y: number) => x <= y,
-    ">=": (x: number, y: number) => x >= y,
-    ">": (x: number, y: number) => x > y,
-    "==": (x: any, y: any) => x == y,
-    "!=": (x: any, y: any) => x != y,
-};
+export class GoVM implements Go_Runnable {
+    /* ================ MICROCODE AND PRIMITIVE FUNCTIONS ================= */
+    binop_microcode: Record<string, Function> = {
+        "+": (x: number, y: number) => x + y,
+        "*": (x: number, y: number) => x * y,
+        "-": (x: number, y: number) => x - y,
+        "/": (x: number, y: number) => x / y,
+        "%": (x: number, y: number) => x % y,
+    };
 
-const unop_microcode: Record<string, Function> = {
-    "-": (x: number) => -x,
-    "!": (x: boolean) => !x,
-    // TODO
-    // "<-": (c: channel) => read(c)
-};
+    relop_microcode: Record<string, Function> = {
+        "<": (x: number, y: number) => x < y,
+        "<=": (x: number, y: number) => x <= y,
+        ">=": (x: number, y: number) => x >= y,
+        ">": (x: number, y: number) => x > y,
+        "==": (x: any, y: any) => x == y,
+        "!=": (x: any, y: any) => x != y,
+    };
 
-export class GoVM {
+    unop_microcode: Record<string, Function> = {
+        "-": (x: number) => -x,
+        "!": (x: boolean) => !x,
+        "<-": (c: HeapAddress) => this.H.Channel_read(c)
+    };
+
     PC: number = 0;
     OS: OperandStack<number> = {
         stack: [],
@@ -47,33 +58,44 @@ export class GoVM {
     E: HeapAddress;
     RTS: HeapAddress[] = [];
     H: Heap; // shared heap
-
-    private builtin_array: Function[] = [];
+    instrs: Instruction[] = [];
+    builtin_array: Function[] = [];
 
     constructor(heap_size: number) {
         const H = Heap.make_heap(heap_size);
         // creating global runtime environment
         const primitive_object = this.bind_builtin();
         const primitive_values = [...Object.values(primitive_object)];
-        const frame_address = H.allocate_Frame(primitive_values.length);
-        var builtin_id = 0;
-        primitive_values.forEach((val, ind) => {
-            if (is_function(val)) {
-                H.set_child(frame_address, ind, H.allocate_Builtin(builtin_id++));
-            } else if (is_number(val)) {
-                H.set_child(frame_address, ind, H.allocate_Number(val));
-            } else {
-                throw new Error("Can not allocate memory for primitive value on the heap!");
-            }
-        });
-        this.H = H;
-        this.E = this.H.Environment_extend(frame_address, this.H.allocate_Environment(0));
+        if (heap_size > 0) {
+            const frame_address = H.allocate_Frame(primitive_values.length);
+            var builtin_id = 0;
+            primitive_values.forEach((val, ind) => {
+                if (is_function(val)) {
+                    H.set_child(frame_address, ind, H.allocate_Builtin(builtin_id++));
+                } else if (is_number(val)) {
+                    H.set_child(frame_address, ind, H.allocate_Number(val));
+                } else {
+                    throw new Error("Can not allocate memory for primitive value on the heap!");
+                }
+            });
+            this.H = H;
+            this.E = this.H.Environment_extend(frame_address, this.H.allocate_Environment(0));
+        } else {
+            this.H = H;
+            this.E = -1;
+        }
     }
 
     private bind_builtin(): Record<string, Function | number> {
         // keys in builtin_funcs must retain the order in builtins(see builtin.ts)
         const builtin_funcs: Record<string, Function> = {
-            make: async (arity: number) => { arity; },
+            // at present we can only declare channel with make
+            make: async (arity: number) => { // make(chan _type)
+                const args = [];
+                while (arity-- > 0) args.push(this.OS.pop()!);
+                args.reverse();
+                return this.H.allocate_Channel();
+            },
             println: async (arity: number) => {
                 const args = [];
                 while (arity-- > 0) args.push(this.H.address_to_JS_value(this.OS.pop()!));
@@ -90,7 +112,8 @@ export class GoVM {
             pow: async (arity: number) => {
                 const y = this.H.address_to_JS_value(this.OS.pop()!) as number;
                 const x = this.H.address_to_JS_value(this.OS.pop()!) as number;
-                return this.H.JS_value_to_address(Math.pow(x, y)) as HeapAddress;
+                const result = this.H.JS_value_to_address(Math.pow(x, y)) as HeapAddress;
+                return result;
             },
         };
         const primitive_object: Record<string, Function | number> = {};
@@ -103,22 +126,27 @@ export class GoVM {
     }
 
     private apply_binop(op: string, v2: HeapAddress, v1: HeapAddress): HeapAddress {
-        return this.H.JS_value_to_address(binop_microcode[op](
+        return this.H.JS_value_to_address(this.binop_microcode[op](
             this.H.address_to_JS_value(v1),
             this.H.address_to_JS_value(v2)
         )) as HeapAddress;
     }
-
+    private apply_send(v: HeapAddress, c: HeapAddress, pos: [number, number]) {
+        let ret_addr = this.H.Channel_write(c, v);
+        if (ret_addr !== c) {
+            this.H.set_Environment_value(this.E, pos, ret_addr);
+        }
+    }
     private apply_relop(op: string, v2: HeapAddress, v1: HeapAddress): HeapAddress {
-        return this.H.JS_value_to_address(relop_microcode[op](
+        return this.H.JS_value_to_address(this.relop_microcode[op](
             this.H.address_to_JS_value(v1),
             this.H.address_to_JS_value(v2)
         )) as HeapAddress;
     }
 
     private apply_unop(op: string, v: HeapAddress): HeapAddress {
-        return this.H.JS_value_to_address(unop_microcode[op](
-            this.H.address_to_JS_value(v),
+        return this.H.JS_value_to_address(this.unop_microcode[op](
+            op === '<-' ? v : this.H.address_to_JS_value(v),
         )) as HeapAddress;
     }
 
@@ -156,7 +184,7 @@ export class GoVM {
                 var frame_address = this.H.allocate_Frame(instr.num!);
                 this.E = this.H.Environment_extend(frame_address, this.E);
                 for (let i = 0; i < instr.num!; i++) {
-                    this.H.set_child(frame_address, i, this.H.Unassigned);
+                    this.H.set_child(frame_address, i, this.H.Unassigned!);
                 }
                 break;
             case "EXIT_SCOPE":
@@ -177,8 +205,8 @@ export class GoVM {
                 this.OS.push(closure_address);
                 break;
             case "CALL":
-                const arity = instr.arity!;
-                const fun = this.OS.peek(arity + 1)!;
+                var arity = instr.arity!;
+                var fun = this.OS.peek(arity + 1)!;
                 if (this.H.is_Builtin(fun)) { // apply builtin function
                     const builtin_id = this.H.get_Builtin_id(fun);
                     await this.apply_builtin(builtin_id, arity);
@@ -205,6 +233,30 @@ export class GoVM {
                     this.E = this.H.get_Callframe_environment(top_frame)
                 }
                 break;
+            case "GO":
+                var arity = instr.arity!;
+                var fun = this.OS.peek(arity + 1)!;
+                if (this.H.is_Builtin(fun)) { // apply builtin function
+                    const builtin_id = this.H.get_Builtin_id(fun);
+                    await this.apply_builtin(builtin_id, arity);
+                } else {
+                    let go_routine = this.create_go_rountine(this.H.get_Closure_pc(fun));
+                    var frame_address = go_routine.H.allocate_Frame(arity);
+                    for (let i = arity - 1; i >= 0; i--) {
+                        go_routine.H.set_child(frame_address, i, this.OS.pop()!);
+                    }
+                    this.OS.pop(); // pop fun
+                    go_routine.RTS.push(go_routine.H.allocate_Callframe(go_routine.E, -1));
+                    go_routine.E = go_routine.H.Environment_extend(
+                        frame_address,
+                        go_routine.H.get_Closure_environment(fun),
+                    );
+                    go_routine.run(this.instrs);
+                }
+            case 'SEND':
+                this.apply_send(this.OS.pop()!, this.OS.pop()!, instr.pos!);
+                this.OS.push(this.H.True);
+                break;
             // TODO: continue and break
             case "CTAG":
             case "BTAG":
@@ -215,8 +267,34 @@ export class GoVM {
     }
 
     async run(instrs: Instruction[]) {
-        while (this.PC < instrs.length) {
-            const instr = instrs[this.PC++];
+        this.instrs = instrs;
+        while (this.PC < this.instrs.length) {
+            const instr = this.instrs[this.PC++];
+            await this.exec(instr);
+        }
+        return this.OS.peek(1) ? this.H.address_to_JS_value(this.OS.peek(1)!) : undefined;
+    }
+
+    create_go_rountine(PC: number): GoRoutine {
+        const go_routine = new GoRoutine(PC, this.E, this.H, this.instrs);
+        return go_routine
+    }
+}
+
+class GoRoutine extends GoVM {
+    constructor(PC: number, E: HeapAddress, H: Heap, instrs: Instruction[]) {
+        super(0);
+        this.E = E;
+        this.H = H;
+        // a gorountine has different PC, OS and RTS
+        this.PC = PC;
+        // OS and RTS are default initialized
+        this.instrs = instrs;
+    }
+    override async run(instrs: Instruction[]) {
+        this.instrs = instrs;
+        while (this.RTS.length > 0) {
+            const instr = this.instrs[this.PC++];
             await this.exec(instr);
         }
         return this.OS.peek(1) ? this.H.address_to_JS_value(this.OS.peek(1)!) : undefined;

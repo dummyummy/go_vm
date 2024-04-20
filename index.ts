@@ -7,13 +7,20 @@ const programStr: string =
 `
 package main
 
-func main() {
-	for i := 0; i < 10; i++ {
-		println(i)
-		sleep(1000)
-	}	
+import "fmt"
+
+var c chan int
+
+func f(x int) {
+	c <- x
 }
 
+func main() {
+	c = make(chan int)
+	go f(4)
+	x := <-c
+	fmt.Println(x)
+}
 `
 console.log(programStr);
 
