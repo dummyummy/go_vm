@@ -48,15 +48,15 @@ enum HeapNodeTag {
 export type HeapAddress = number;
 
 export class Heap {
-    private _data: Uint8Array;
-    private data: ArrayBuffer;
-    private view: DataView;
+    _data: Uint8Array;
+    data: ArrayBuffer;
+    view: DataView;
 
-    private free: number; // free is the next free index in HEAP
+    free: number; // free is the next free index in HEAP
 
     // string pool
-    private stringPool: Record<string, [number, string]>;
-    private hashString(str: string): number {
+    stringPool: Record<string, [number, string]>;
+    hashString(str: string): number {
         let hash = 5381;
         for (let i = 0; i < str.length; i++) {
             const char = str.charCodeAt(i);
@@ -344,7 +344,7 @@ export class Heap {
     // if a channel runs out of buffer space, allocate a new channel with 32 childs
     // if a channel is forwarded, its first child becomes the forwarding address
     // note: #children is 0
-    allocate_Channel = (buffer: number = 16): number => {
+    allocate_Channel = (buffer: number = 500): number => {
         const channel_address = this.allocate(HeapNodeTag.Channel_tag, buffer + 1);
         // Set ready to read and written to to 0 (false)
         this.set_2_bytes_at_offset(channel_address, 1, 0); // buffer count
@@ -361,10 +361,12 @@ export class Heap {
 
     Channel_forwarded = (chan: HeapAddress) => this.get_byte_at_offset(chan, 7) == 1;
 
-    Channel_write = (chan: HeapAddress, val: HeapAddress): HeapAddress => {
-        while (this.Channel_test_and_set_writing(chan)) {
+    Channel_write = async (chan: HeapAddress, val: HeapAddress) => {
+        const tas = async () => {
             if (this.Channel_forwarded(chan)) chan = this.get_child(chan, 0);
-        } // spin lock
+            if (this.Channel_test_and_set_writing(chan)) setTimeout(tas, 1);
+        }
+        await tas();
         if (this.Channel_full(chan)) {
             chan = this.Channel_copy_and_grow(chan);
         }
@@ -374,11 +376,16 @@ export class Heap {
         return chan;
     }
 
-    Channel_read = (chan: HeapAddress): HeapAddress => {
-        while (this.Channel_test_and_set_reading(chan)) {
+    Channel_read = async (chan: HeapAddress) => {
+        const tas = async () => {
             if (this.Channel_forwarded(chan)) chan = this.get_child(chan, 0);
-        }
-        while (this.Channel_count(chan) == 0);
+            if (this.Channel_test_and_set_reading(chan)) setTimeout(tas, 1);
+        };
+        await tas();
+        const wait_empty = async () => {
+            if (this.Channel_count(chan) == 0) setTimeout(wait_empty, 1);
+        };
+        await wait_empty();
         // start critical segment
         if (this.Channel_count(chan) == 0) {
             this.Channel_stop_reading(chan);

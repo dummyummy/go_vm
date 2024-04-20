@@ -45,7 +45,6 @@ export class GoVM implements Go_Runnable {
     unop_microcode: Record<string, Function> = {
         "-": (x: number) => -x,
         "!": (x: boolean) => !x,
-        "<-": (c: HeapAddress) => this.H.Channel_read(c)
     };
 
     PC: number = 0;
@@ -131,8 +130,8 @@ export class GoVM implements Go_Runnable {
             this.H.address_to_JS_value(v2)
         )) as HeapAddress;
     }
-    private apply_send(v: HeapAddress, c: HeapAddress, pos: [number, number]) {
-        let ret_addr = this.H.Channel_write(c, v);
+    private async apply_send(v: HeapAddress, c: HeapAddress, pos: [number, number]) {
+        let ret_addr = await this.H.Channel_write(c, v);
         if (ret_addr !== c) {
             this.H.set_Environment_value(this.E, pos, ret_addr);
         }
@@ -144,10 +143,12 @@ export class GoVM implements Go_Runnable {
         )) as HeapAddress;
     }
 
+    private async recv_unop(c: HeapAddress) {
+        return await this.H.Channel_read(c);
+    }
+
     private apply_unop(op: string, v: HeapAddress): HeapAddress {
-        return op !== '<-'
-            ? this.H.JS_value_to_address(this.unop_microcode[op](this.H.address_to_JS_value(v))) as HeapAddress
-            : this.unop_microcode[op](v) as HeapAddress;
+        return this.H.JS_value_to_address(this.unop_microcode[op](this.H.address_to_JS_value(v))) as HeapAddress
     }
 
     private async apply_builtin(id: number, arity: number) {
@@ -162,7 +163,7 @@ export class GoVM implements Go_Runnable {
                 this.OS.push(this.H.JS_value_to_address(instr.val) as number);
                 break;
             case "UNOP":
-                this.OS.push(this.apply_unop(instr.sym!, this.OS.pop()!));
+                this.OS.push(instr.sym! === '<-' ? await this.recv_unop(this.OS.pop()!) : this.apply_unop(instr.sym!, this.OS.pop()!));
                 break;
             case "BINOP":
                 this.OS.push(this.apply_binop(instr.sym!, this.OS.pop()!, this.OS.pop()!));

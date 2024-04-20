@@ -160,8 +160,8 @@ export function compile(ast: GoNode, ce: CompilationEnv = global_compile_environ
                 node: "BlockStatement",
                 body: {
                     node: "StatementList",
-                    statements: (((ast.body as GoNode).body as GoNode).statements as GoNode[]).concat(
-                        for_clauses
+                    statements: for_clauses.concat(
+                        ...(((ast.body as GoNode).body as GoNode).statements as GoNode[])
                     )
                 }
             } as GoNode
@@ -193,9 +193,8 @@ export function compile(ast: GoNode, ce: CompilationEnv = global_compile_environ
             instructions.push(for_jmp);
             instructions.push({ tag: 'BTAG' });
             for_jof.addr = instructions.length;
-            instructions.push({
-                tag: 'EXIT_SCOPE',
-            });
+            instructions.push({ tag: 'EXIT_SCOPE' });
+            instructions.push({ tag: 'LDC', val: null });
             break;
         case "GoStatement":
             if (ast.expr!.node != 'CallExpression') {
