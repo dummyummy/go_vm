@@ -1,5 +1,6 @@
 import { Heap, HeapAddress } from "../heap";
 import Instruction from "../utils/instruction";
+// @ts-ignore
 import { JSValue, is_function, is_number } from "../utils/type_utils";
 
 // Operand Stack as a placeholder
@@ -72,15 +73,21 @@ export class GoVM {
     private bind_builtin(): Record<string, Function | number> {
         // keys in builtin_funcs must retain the order in builtins(see builtin.ts)
         const builtin_funcs: Record<string, Function> = {
-            make: (arity: number) => { arity; },
-            println: (arity: number) => {
+            make: async (arity: number) => { arity; },
+            println: async (arity: number) => {
                 const args = [];
                 while (arity-- > 0) args.push(this.H.address_to_JS_value(this.OS.pop()!));
                 args.reverse();
                 console.log(...args);
                 return undefined;
             },
-            pow: (arity: number) => {
+            sleep: async (arity: number) => {
+                const promise_sleep = (delay: number) => new Promise((r: Function) => setTimeout(r, delay));
+                const delay = this.H.address_to_JS_value(this.OS.pop()!) as number;
+                await promise_sleep(delay);
+                return delay;
+            },
+            pow: async (arity: number) => {
                 const y = this.H.address_to_JS_value(this.OS.pop()!) as number;
                 const x = this.H.address_to_JS_value(this.OS.pop()!) as number;
                 return this.H.JS_value_to_address(Math.pow(x, y)) as HeapAddress;
@@ -115,13 +122,13 @@ export class GoVM {
         )) as HeapAddress;
     }
 
-    private apply_builtin(id: number, arity: number): void {
-        const builtin_ret = this.builtin_array[id](arity);
+    private async apply_builtin(id: number, arity: number) {
+        const builtin_ret = await this.builtin_array[id](arity);
         this.OS.pop(); // pop fun
         this.OS.push(builtin_ret);
     }
 
-    exec(instr: Instruction): void {
+    async exec(instr: Instruction) {
         switch (instr.tag) {
             case "LDC":
                 this.OS.push(this.H.JS_value_to_address(instr.val) as number);
@@ -174,7 +181,7 @@ export class GoVM {
                 const fun = this.OS.peek(arity + 1)!;
                 if (this.H.is_Builtin(fun)) { // apply builtin function
                     const builtin_id = this.H.get_Builtin_id(fun);
-                    this.apply_builtin(builtin_id, arity);
+                    await this.apply_builtin(builtin_id, arity);
                 } else {
                     var frame_address = this.H.allocate_Frame(arity);
                     for (let i = arity - 1; i >= 0; i--) {
@@ -198,15 +205,19 @@ export class GoVM {
                     this.E = this.H.get_Callframe_environment(top_frame)
                 }
                 break;
+            // TODO: continue and break
+            case "CTAG":
+            case "BTAG":
+                break;
             default:
                 throw new Error("Unknown instruction " + instr.tag);
         }
     }
 
-    run(instrs: Instruction[]): JSValue {
+    async run(instrs: Instruction[]) {
         while (this.PC < instrs.length) {
             const instr = instrs[this.PC++];
-            this.exec(instr);
+            await this.exec(instr);
         }
         return this.OS.peek(1) ? this.H.address_to_JS_value(this.OS.peek(1)!) : undefined;
     }

@@ -1,23 +1,17 @@
 import parse from "./parser";
 import compile from "./compiler";
 import { GoVM } from "./vm";
+import { JSValue } from "./utils/type_utils";
 
 const programStr: string = 
 `
 package main
 
-func fib() func() int {
-	a, b := 0, 1
-	return func() int {
-		a, b = b, a+b
-		return a
-	}
-}
-
 func main() {
-	f := fib()
-	// Function calls are evaluated left-to-right.
-	println(f(), f(), f(), f(), f())
+	for i := 0; i < 10; i++ {
+		println(i)
+		sleep(1000)
+	}	
 }
 
 `
@@ -27,6 +21,8 @@ let vm = new GoVM(100000);
 
 let ast = parse(programStr);
 let instrs = compile(ast);
-let result = vm.run(instrs);
-
-console.log(result);
+let result: JSValue;
+vm.run(instrs).then((value) => { result = value }).then(() => {
+	// do prints here
+	console.log(result);
+});
