@@ -45,6 +45,8 @@ enum HeapNodeTag {
     Channel_tag = 14
 }
 
+export type HeapAddress = number;
+
 export class Heap {
     private data: ArrayBuffer;
     private view: DataView;
@@ -63,6 +65,13 @@ export class Heap {
         return hash >>> 0; // Ensure non-negative hash as a uint32
     };
 
+    /********* Literals' Addresses *********/
+    False: HeapAddress;
+    True: HeapAddress;
+    Null: HeapAddress;
+    Unassigned: HeapAddress;
+    Undefined: HeapAddress;
+
     // static methods
     static make_heap(bytes: number): Heap {
         return new Heap(bytes);
@@ -74,8 +83,12 @@ export class Heap {
         this.view = new DataView(this.data);
         this.free = 0;
         this.stringPool = {};
+        this.False = this.allocate(HeapNodeTag.False_tag, 1);
+        this.True = this.allocate(HeapNodeTag.True_tag, 1);
+        this.Null = this.allocate(HeapNodeTag.Null_tag, 1);
+        this.Unassigned = this.allocate(HeapNodeTag.Unassigned_tag, 1);
+        this.Undefined = this.allocate(HeapNodeTag.Undefined_tag, 1);
     }
-
 
     /********* Start Basic Allocation Methods *********/
     allocate = (tag: number, size: number): number => {
@@ -126,13 +139,6 @@ export class Heap {
     get_4_bytes_at_offset = (address: number, offset: number): number =>
         this.view.getUint32(address * word_size + offset);
     /********* End Basic Allocation Methods *********/
-
-    /********* Literals' Addresses *********/
-    False = this.allocate(HeapNodeTag.False_tag, 1);
-    True = this.allocate(HeapNodeTag.True_tag, 1);
-    Null = this.allocate(HeapNodeTag.Null_tag, 1);
-    Unassigned = this.allocate(HeapNodeTag.Unassigned_tag, 1);
-    Undefined = this.allocate(HeapNodeTag.Undefined_tag, 1);
 
     /********* Type Assertations *********/
     is_False = (address: number): boolean => this.get_tag(address) === HeapNodeTag.False_tag;
@@ -245,7 +251,6 @@ export class Heap {
         return address;
     };
     get_Blockframe_environment = (address: number): number => this.get_child(address, 0);
-
 
     // call frame
     // [1 byte tag, 1 byte unused, 2 bytes pc,
@@ -447,25 +452,3 @@ export class Heap {
         }
     };
 }
-
-
-// Operand Stack as a placeholder
-// interface OperandStack<T> {
-//     stack: T[];
-//     peek(): T | undefined;
-//     pop(): T | undefined;
-//     push(item: T): void;
-// }
-
-// const OS: OperandStack<number> = {
-//     stack: [],
-//     peek() {
-//         return this.stack.length > 0 ? this.stack.at(-1) : undefined;
-//     },
-//     pop() {
-//         return this.stack.length > 0 ? this.stack.pop() : undefined;
-//     },
-//     push(item) {
-//         this.stack.push(item);
-//     },
-// };

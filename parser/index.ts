@@ -9,7 +9,6 @@ export default function parse(programStr: string): GoNode {
     let tokenStream = new CommonTokenStream(lexer);
     let parser = new GoParser(tokenStream);
     let tree = parser.sourceFile();
-    console.log(tree.toStringTree(null, parser))
     let visitor = new GoVisitor();
     let result = visitor.visit(tree);
     return result;

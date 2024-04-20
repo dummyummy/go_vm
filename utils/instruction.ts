@@ -3,7 +3,7 @@ export default interface Instruction {
     val?: string | number | boolean | null;
     sym?: string;
     addr?: number;
-    pos?: number[]; // position in the compile time environment
+    pos?: [number, number]; // position in the compile time environment
     arity?: number;
     ret_arity?: number;
     num?: number;
