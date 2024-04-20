@@ -145,9 +145,9 @@ export class GoVM implements Go_Runnable {
     }
 
     private apply_unop(op: string, v: HeapAddress): HeapAddress {
-        return this.H.JS_value_to_address(this.unop_microcode[op](
-            op === '<-' ? v : this.H.address_to_JS_value(v),
-        )) as HeapAddress;
+        return op !== '<-'
+            ? this.H.JS_value_to_address(this.unop_microcode[op](this.H.address_to_JS_value(v))) as HeapAddress
+            : this.unop_microcode[op](v) as HeapAddress;
     }
 
     private async apply_builtin(id: number, arity: number) {
@@ -253,6 +253,7 @@ export class GoVM implements Go_Runnable {
                     );
                     go_routine.run(this.instrs);
                 }
+                break;
             case 'SEND':
                 this.apply_send(this.OS.pop()!, this.OS.pop()!, instr.pos!);
                 this.OS.push(this.H.True);

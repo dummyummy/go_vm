@@ -48,6 +48,7 @@ enum HeapNodeTag {
 export type HeapAddress = number;
 
 export class Heap {
+    private _data: Uint8Array;
     private data: ArrayBuffer;
     private view: DataView;
 
@@ -79,15 +80,24 @@ export class Heap {
 
     constructor(bytes: number) {
         if (bytes % 8 !== 0) throw new Error("heap bytes must be divisible by 8");
-        this.data = new ArrayBuffer(bytes);
+        this._data = new Uint8Array(bytes);
+        this.data = this._data.buffer as ArrayBuffer;
         this.view = new DataView(this.data);
         this.free = 0;
         this.stringPool = {};
-        this.False = this.allocate(HeapNodeTag.False_tag, 1);
-        this.True = this.allocate(HeapNodeTag.True_tag, 1);
-        this.Null = this.allocate(HeapNodeTag.Null_tag, 1);
-        this.Unassigned = this.allocate(HeapNodeTag.Unassigned_tag, 1);
-        this.Undefined = this.allocate(HeapNodeTag.Undefined_tag, 1);
+        if (bytes > 0) {
+            this.False = this.allocate(HeapNodeTag.False_tag, 1);
+            this.True = this.allocate(HeapNodeTag.True_tag, 1);
+            this.Null = this.allocate(HeapNodeTag.Null_tag, 1);
+            this.Unassigned = this.allocate(HeapNodeTag.Unassigned_tag, 1);
+            this.Undefined = this.allocate(HeapNodeTag.Undefined_tag, 1);
+        } else {
+            this.False = -1;
+            this.True = -1;
+            this.Null = -1;
+            this.Unassigned = -1;
+            this.Undefined = -1;
+        }
     }
 
     /********* Start Basic Allocation Methods *********/
@@ -326,8 +336,8 @@ export class Heap {
     };
 
     // channel
-    // [1 byte tag, 2 bytes buffer count, 1 byte is forwarded
-    // 2 bytes #children, 1 byte is reading, 1 byte is writing]
+    // [1 byte tag, 2 bytes buffer count, 1 byte is reading, 1 byte is writing,
+    // 2 bytes #children, 1 byte is forwarded]
     // children are buffered items
     // like the STL vector in C++
     // we fisrt allocate 16 children for the channel
@@ -338,18 +348,18 @@ export class Heap {
         const channel_address = this.allocate(HeapNodeTag.Channel_tag, buffer + 1);
         // Set ready to read and written to to 0 (false)
         this.set_2_bytes_at_offset(channel_address, 1, 0); // buffer count
-        this.set_byte_at_offset(channel_address, 3, 0); // is forwarded
-        this.set_byte_at_offset(channel_address, 6, 0); // is reading
-        this.set_byte_at_offset(channel_address, 7, 0); // is writing
+        this.set_byte_at_offset(channel_address, 7, 0); // is forwarded
+        this.set_byte_at_offset(channel_address, 3, 0); // is reading
+        this.set_byte_at_offset(channel_address, 4, 0); // is writing
         return channel_address;
     };
 
-    Channel_test_and_set_reading = (chan: HeapAddress) => Atomics.compareExchange(this.data as Uint8Array, chan * word_size + 6, 0, 1);
-    Channel_test_and_set_writing = (chan: HeapAddress) => Atomics.compareExchange(this.data as Uint8Array, chan * word_size + 7, 0, 1);
-    Channel_stop_reading = (chan: HeapAddress) => Atomics.store(this.data as Uint8Array, chan * word_size + 6, 0);
-    Channel_stop_writing = (chan: HeapAddress) => Atomics.store(this.data as Uint8Array, chan * word_size + 7, 0);
+    Channel_test_and_set_reading = (chan: HeapAddress) => Atomics.compareExchange(this._data, chan * word_size + 3, 0, 1);
+    Channel_test_and_set_writing = (chan: HeapAddress) => Atomics.compareExchange(this._data, chan * word_size + 4, 0, 1);
+    Channel_stop_reading = (chan: HeapAddress) => Atomics.store(this._data, chan * word_size + 3, 0);
+    Channel_stop_writing = (chan: HeapAddress) => Atomics.store(this._data, chan * word_size + 4, 0);
 
-    Channel_forwarded = (chan: HeapAddress) => this.get_byte_at_offset(chan, 3) == 1;
+    Channel_forwarded = (chan: HeapAddress) => this.get_byte_at_offset(chan, 7) == 1;
 
     Channel_write = (chan: HeapAddress, val: HeapAddress): HeapAddress => {
         while (this.Channel_test_and_set_writing(chan)) {
@@ -358,7 +368,7 @@ export class Heap {
         if (this.Channel_full(chan)) {
             chan = this.Channel_copy_and_grow(chan);
         }
-        this.set_child(chan, val, this.Channel_count(chan));
+        this.set_child(chan, this.Channel_count(chan), val);
         this.set_2_bytes_at_offset(chan, 1, this.Channel_count(chan) + 1);
         this.Channel_stop_writing(chan);
         return chan;
@@ -393,11 +403,11 @@ export class Heap {
         for (let i = 0; i < src_buffer_count; i++) {
             this.set_child(dst, i, this.get_child(src, i));
         }
-        this.set_byte_at_offset(src, 3, 1); // is forwarded
+        this.set_byte_at_offset(src, 7, 1); // is forwarded
         this.set_child(src, 0, dst);
-        this.set_byte_at_offset(dst, 3, 0); // is forwarded
-        this.set_byte_at_offset(dst, 6, this.get_byte_at_offset(src, 6)); // is reading
-        this.set_byte_at_offset(dst, 7, this.get_byte_at_offset(src, 7)); // is writing
+        this.set_byte_at_offset(dst, 7, 0); // is forwarded
+        this.set_byte_at_offset(dst, 3, this.get_byte_at_offset(src, 6)); // is reading
+        this.set_byte_at_offset(dst, 4, this.get_byte_at_offset(src, 7)); // is writing
         return dst;
     }
 
