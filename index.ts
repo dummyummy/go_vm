@@ -2,6 +2,7 @@ import parse from "./parser";
 import compile from "./compiler";
 import { GoVM } from "./vm";
 import { JSValue } from "./utils/type_utils";
+import { exit } from "process";
 
 var testcases: string[] = [];
 
@@ -74,4 +75,8 @@ let result: JSValue;
 vm.run(instrs).then((value) => { result = value }).then(() => {
 	// do prints here
 	console.log(result);
+	exit(0);
+}).catch((e) => {
+	console.log(e);
+	exit(1);
 });
