@@ -15,7 +15,7 @@
   },
   "scripts": {
     "build": "npx tsc --project tsconfig.json",
-    "test": "yarn build && npx jest -i"
+    "test": "yarn build && npx jest"
   },
   "dependencies": {
     "@types/node": "^20.12.7",
