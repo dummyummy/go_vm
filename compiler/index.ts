@@ -219,21 +219,38 @@ export function compile(ast: GoNode, ce: CompilationEnv = global_compile_environ
             if (ast.idents!.length != (ast.exprs as GoNode).exprs?.length) {
                 throw new Error("Dismatched expression count and identifier count in assignment!");
             }
-            for (var i = 0; i < ast.idents!.length; i++) {
-                const pos = compile_time_environment_position(ce, ast.idents![i]);
+            if (ast.op == '=') {
+                for (var i = 0; i < ast.idents!.length; i++) {
+                    const pos = compile_time_environment_position(ce, ast.idents![i]);
+                    if (compile_time_constness(ce, pos)) {
+                        throw new Error("Constant can not be re-assigned!");
+                    }
+                    compile(((ast.exprs as GoNode).exprs! as GoNode[])[i], ce, instructions);
+                }
+                for (var i = ast.idents!.length - 1; i >= 0; i--) {
+                    instructions.push({
+                        tag: 'ASSIGN',
+                        pos: compile_time_environment_position(ce, ast.idents![i])
+                    });
+                    if (i > 0) {
+                        instructions.push({ tag: 'POP' });
+                    }
+                }
+            } else {
+                const pos = compile_time_environment_position(ce, ast.idents![0]);
                 if (compile_time_constness(ce, pos)) {
                     throw new Error("Constant can not be re-assigned!");
                 }
-                compile(((ast.exprs as GoNode).exprs! as GoNode[])[i], ce, instructions);
-            }
-            for (var i = ast.idents!.length - 1; i >= 0; i--) {
+                compile({
+                    node: "BinaryOp",
+                    op: ast.op!.substring(0, ast.op!.length - 1),
+                    rhs: { node: "Identifier", ident: ast.idents![0] },
+                    lhs: ((ast.exprs as GoNode).exprs! as GoNode[])[0]
+                }, ce, instructions);
                 instructions.push({
                     tag: 'ASSIGN',
-                    pos: compile_time_environment_position(ce, ast.idents![i])
+                    pos: compile_time_environment_position(ce, ast.idents![0])
                 });
-                if (i > 0) {
-                    instructions.push({ tag: 'POP' });
-                }
             }
             break;
         case "ConstDecl": // fall through

@@ -1,5 +1,41 @@
 import run_program from "..";
 
+test("Assignment", async () => {
+    const programStr = 
+    `
+    package main
+
+    func main() {
+        a := 4
+        a *= 3
+        println(a)
+    }
+    `;
+    const result = await run_program(programStr);
+    expect(result).toBe("12\n");
+});
+
+test("Continue and Break", async () => {
+    const programStr = 
+    `
+    package main
+
+    func main() {
+        for i := 0; i < 10; i++ {
+            if i < 4 {
+                continue
+            }
+            println(i)
+            if i >= 7 {
+                break
+            }
+        }
+    }
+    `;
+    const result = await run_program(programStr);
+    expect(result).toBe("4\n5\n6\n7\n");
+});
+
 test('Fibonacci Closure', async () => {
     const programStr = 
     `
