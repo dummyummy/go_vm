@@ -50,10 +50,17 @@ export class GoVM {
     instrs: Instruction[] = [];
     builtin_array: Function[] = [];
     rid: number;
+    output?: Buffer; // output buffer
+    routines: GoRoutine[];
+    running: [boolean];
 
-    constructor(heap_size: number) {
+    constructor(heap_size: number, output_buffer_size: number = 65536) {
         const H = Heap.make_heap(heap_size);
         this.rid = 0;
+        routine_id = 0;
+        this.routines = [];
+        this.running = [true];
+        if (output_buffer_size > 0) this.output = Buffer.alloc(output_buffer_size);
         // creating global runtime environment
         const primitive_object = this.bind_builtin();
         const primitive_values = [...Object.values(primitive_object)];
@@ -86,9 +93,16 @@ export class GoVM {
             },
             println: async (arity: number) => {
                 const args = [];
-                while (arity-- > 0) args.push(this.H.address_to_JS_value(this.OS.pop()!));
+                let i = arity;
+                while (i-- > 0) args.push(this.H.address_to_JS_value(this.OS.pop()!));
                 args.reverse();
-                console.log(...args);
+                // console.log(...args);
+                let str = "";
+                for (i = 0; i < arity; i++) {
+                    str += args[i];
+                    if (i < arity - 1) str += " ";
+                }
+                this.output?.write(str + "\n", this.output!.indexOf('\x00'));
                 return undefined;
             },
             sleep: async (arity: number) => {
@@ -120,7 +134,7 @@ export class GoVM {
         )) as HeapAddress;
     }
     private async apply_send(v: HeapAddress, c: HeapAddress) {
-        return await this.H.Channel_write(c, v);
+        return await this.H.Channel_write(c, v, this.running);
     }
     private apply_relop(op: string, v2: HeapAddress, v1: HeapAddress): HeapAddress {
         return this.H.JS_value_to_address(this.relop_microcode[op](
@@ -130,7 +144,7 @@ export class GoVM {
     }
 
     private async recv_unop(c: HeapAddress) {
-        return await this.H.Channel_read(c);
+        return await this.H.Channel_read(c, this.running);
     }
 
     private apply_unop(op: string, v: HeapAddress): HeapAddress {
@@ -238,6 +252,7 @@ export class GoVM {
                         frame_address,
                         go_routine.H.get_Closure_environment(fun),
                     );
+                    this.routines.push(go_routine);
                     go_routine.run(this.instrs);
                 }
                 break;
@@ -260,32 +275,37 @@ export class GoVM {
             const instr = this.instrs[this.PC++];
             await this.exec(instr);
         }
-        return this.OS.peek(1) ? this.H.address_to_JS_value(this.OS.peek(1)!) : undefined;
+        this.routines.forEach(val => val.terminate());
+        return this.output!.toString().replace(/\x00+/g, '');
     }
-
+    
     create_go_rountine(PC: number): GoRoutine {
-        const go_routine = new GoRoutine(PC, this.E, this.H, this.instrs);
+        const go_routine = new GoRoutine(PC, this.E, this.H, this.output!, this.instrs);
         return go_routine
     }
 }
 
 class GoRoutine extends GoVM {
-    constructor(PC: number, E: HeapAddress, H: Heap, instrs: Instruction[]) {
-        super(0);
+    constructor(PC: number, E: HeapAddress, H: Heap, output: Buffer, instrs: Instruction[]) {
+        super(0, 0);
         this.rid = ++routine_id;
         this.H = H;
         this.E = this.H.Environment_duplicate(E);
+        this.output = output;
         // a gorountine has different PC, OS and RTS
         this.PC = PC;
         // OS and RTS are default initialized
         this.instrs = instrs;
     }
+    terminate() {
+        this.running[0] = false;
+    }
     override async run(instrs: Instruction[]) {
         this.instrs = instrs;
-        while (this.RTS.length > 0) {
+        while (this.running[0] && this.RTS.length > 0) {
             const instr = this.instrs[this.PC++];
             await this.exec(instr);
         }
-        return this.OS.peek(1) ? this.H.address_to_JS_value(this.OS.peek(1)!) : undefined;
+        return this.output!.toString().replace(/\x00+/g, '');
     }
 }

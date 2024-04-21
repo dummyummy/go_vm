@@ -375,21 +375,25 @@ export class Heap {
     Channel_head = (chan: HeapAddress) => this.get_4_bytes_at_offset(chan + 1, 0);
     Channel_tail = (chan: HeapAddress) => this.get_4_bytes_at_offset(chan + 1, 4);
 
-    Channel_write = async (chan: HeapAddress, val: HeapAddress) => {
+    Channel_write = async (chan: HeapAddress, val: HeapAddress, running: [boolean]) => {
         const cas = async () => {
-            while (this.Channel_comp_and_swap_writing(chan)) {
+            while (running[0] && this.Channel_comp_and_swap_writing(chan)) {
                 // await new Promise(resolve => setTimeout(resolve, 1));
                 await new Promise(resolve => resolve(chan));
             }
         };
         await cas();
         const wait_full = async () => {
-            while (this.Channel_full(chan)) {
+            while (running[0] && this.Channel_full(chan)) {
                 // await new Promise(resolve => setTimeout(resolve, 1));
                 await new Promise(resolve => resolve(chan));
             }
         };
         await wait_full();
+        if (!running[0]) {
+            this.Channel_stop_writing(chan);
+            return 0;
+        }
         // start critical segment
         let tail = this.Channel_tail(chan);
         this.set_child(chan, tail + 1, val);
@@ -401,21 +405,25 @@ export class Heap {
         return chan;
     }
 
-    Channel_read = async (chan: HeapAddress) => {
+    Channel_read = async (chan: HeapAddress, running: [boolean]) => {
         const cas = async () => {
-            while (this.Channel_comp_and_swap_reading(chan)) {
+            while (running[0] && this.Channel_comp_and_swap_reading(chan)) {
                 // await new Promise(resolve => setTimeout(resolve, 1));
                 await new Promise(resolve => resolve(chan));
             }
         };
         await cas();
         const wait_empty = async () => {
-            while (this.Channel_empty(chan)) {
+            while (running[0] && this.Channel_empty(chan)) {
                 // await new Promise(resolve => setTimeout(resolve, 1));
                 await new Promise(resolve => resolve(chan));
             }
         };
         await wait_empty();
+        if (!running[0]) {
+            this.Channel_stop_reading(chan);
+            return 0;
+        }
         // start critical segment
         let head = this.Channel_head(chan);
         let val = this.get_child(chan, head + 1);
