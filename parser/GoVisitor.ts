@@ -240,7 +240,7 @@ export default class GoVisitor extends GoBaseVisitor<GoNode> {
         return {
             node: "ForClause",
             init: ctx._initStmt ? this.visitSimpleStmt(ctx._initStmt) : null,
-            expr: this.visitExpression(ctx.expression()),
+            expr: ctx.expression() ? this.visitExpression(ctx.expression()) : null,
             post: ctx._postStmt ? this.visitSimpleStmt(ctx._postStmt) : null
         };
     };
@@ -427,7 +427,7 @@ export default class GoVisitor extends GoBaseVisitor<GoNode> {
                 : ctx.integer()
                 ? ctx.integer().getText()
                 : ctx.string_()
-                ? ctx.string_().getText()
+                ? ctx.string_().getText().replace(/^"(.*)"$/, '$1')
                 : ctx.FLOAT_LIT().getText()
         }
     }
@@ -446,7 +446,9 @@ export default class GoVisitor extends GoBaseVisitor<GoNode> {
             tb: this.visitBlock(ctx.block(0)), // true branch
             fb: ctx.ifStmt()
                 ? this.visitIfStmt(ctx.ifStmt())
-                : this.visitBlock(ctx.block(1))
+                : ctx.ELSE()
+                ? this.visitBlock(ctx.block(1))
+                : null
         };
     };
 

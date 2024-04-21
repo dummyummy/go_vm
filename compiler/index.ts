@@ -1,12 +1,12 @@
 import { GoNode } from "../parser/GoVisitor";
 import Instruction from "../utils/instruction";
-import { primitive_object } from "../utils/builtin";
+import { builtins, constants } from "../utils/builtin";
 
 export type CompilationIdentifier = { name: string, const: boolean }
 export type CompilationFrame = CompilationIdentifier[]
 export type CompilationEnv = CompilationFrame[]
 
-const global_compile_frame_names = [...primitive_object.keys()]
+const global_compile_frame_names = builtins.concat(constants)
 const global_compile_frame: CompilationFrame = []
 global_compile_frame_names.forEach((val) => global_compile_frame.push({
     name: val,
@@ -18,7 +18,7 @@ const compile_time_constness = (env: CompilationEnv, pos: number[]) => {
     return env[pos[0]][pos[1]].const;
 }
 
-const compile_time_environment_position = (env: CompilationEnv, x: string) => {
+const compile_time_environment_position = (env: CompilationEnv, x: string): [number, number] => {
     let frame_index = env.length
     while (value_index(env[--frame_index], x) === -1) { }
     return [frame_index,
@@ -153,6 +153,17 @@ export function compile(ast: GoNode, ce: CompilationEnv = global_compile_environ
             break;
         case "ForStatement":
             var for_clauses: GoNode[] = []
+            if (ast.clause == null) {
+                ast.clause = {
+                    node: "ForClause",
+                    init: null,
+                    expr: { node: 'Lit', type: 'bool', value: 'true' },
+                    post: null
+                } as GoNode
+            }
+            if (ast.clause.expr == null) {
+                ast.clause.expr = { node: 'Lit', type: 'bool', value: 'true' };
+            }
             if (ast.clause?.init) for_clauses.push(ast.clause.init);
             if (ast.clause?.expr) for_clauses.push(ast.clause.expr);
             if (ast.clause?.post) for_clauses.push(ast.clause.post);
@@ -160,8 +171,8 @@ export function compile(ast: GoNode, ce: CompilationEnv = global_compile_environ
                 node: "BlockStatement",
                 body: {
                     node: "StatementList",
-                    statements: (((ast.body as GoNode).body as GoNode).statements as GoNode[]).concat(
-                        for_clauses
+                    statements: for_clauses.concat(
+                        ...(((ast.body as GoNode).body as GoNode).statements as GoNode[])
                     )
                 }
             } as GoNode
@@ -193,9 +204,8 @@ export function compile(ast: GoNode, ce: CompilationEnv = global_compile_environ
             instructions.push(for_jmp);
             instructions.push({ tag: 'BTAG' });
             for_jof.addr = instructions.length;
-            instructions.push({
-                tag: 'EXIT_SCOPE',
-            });
+            instructions.push({ tag: 'EXIT_SCOPE' });
+            instructions.push({ tag: 'LDC', val: null });
             break;
         case "GoStatement":
             if (ast.expr!.node != 'CallExpression') {
@@ -215,11 +225,13 @@ export function compile(ast: GoNode, ce: CompilationEnv = global_compile_environ
                     throw new Error("Constant can not be re-assigned!");
                 }
                 compile(((ast.exprs as GoNode).exprs! as GoNode[])[i], ce, instructions);
+            }
+            for (var i = ast.idents!.length - 1; i >= 0; i--) {
                 instructions.push({
                     tag: 'ASSIGN',
-                    pos: pos
+                    pos: compile_time_environment_position(ce, ast.idents![i])
                 });
-                if (i + 1 < ast.idents!.length) {
+                if (i > 0) {
                     instructions.push({ tag: 'POP' });
                 }
             }
@@ -237,11 +249,13 @@ export function compile(ast: GoNode, ce: CompilationEnv = global_compile_environ
                 } else {
                     compile((ast.assigns!.exprs! as GoNode[])[i], ce, instructions);
                 }
+            }
+            for (var i = ast.idents!.length - 1; i >= 0; i--) {
                 instructions.push({
                     tag: 'ASSIGN',
                     pos: compile_time_environment_position(ce, ast.idents![i])
                 });
-                if (i + 1 < ast.idents!.length) {
+                if (i > 0) {
                     instructions.push({ tag: 'POP' });
                 }
             }
@@ -265,11 +279,13 @@ export function compile(ast: GoNode, ce: CompilationEnv = global_compile_environ
                 } else {
                     compile((ast.assigns!.exprs! as GoNode[])[i], ce, instructions);
                 }
+            }
+            for (var i = ast.idents!.length - 1; i >= 0; i--) {
                 instructions.push({
                     tag: 'ASSIGN',
                     pos: compile_time_environment_position(ce, ast.idents![i])
                 });
-                if (i + 1 < ast.idents!.length) {
+                if (i > 0) {
                     instructions.push({ tag: 'POP' });
                 }
             }
@@ -293,8 +309,8 @@ export function compile(ast: GoNode, ce: CompilationEnv = global_compile_environ
                     throw new Error("Not supported type literal!");
                 }
             }
-            if (ast.exprs) {
-                ((ast.exprs as GoNode).exprs as GoNode[]).forEach((val) => {
+            if (ast.args?.exprs) {
+                ((ast.args?.exprs as GoNode).exprs as GoNode[]).forEach((val) => {
                     compile(val, ce, instructions);
                     arity++;
                 });
@@ -353,11 +369,10 @@ export function compile(ast: GoNode, ce: CompilationEnv = global_compile_environ
                 tag: 'LDF',
                 arity: params.length,
                 ret_arity: ret_params.length,
-                addr: instructions.length + 1
+                addr: instructions.length + 2
             });
             const jmp_instruction = { tag: 'JMP' } as Instruction;
             instructions.push(jmp_instruction);
-
             compile(ast.body as GoNode, 
                 compile_time_environment_extend(ce, params.filter(x=>x!==null) as CompilationFrame), instructions);
             instructions.push({ tag: 'LDC', val: null });
@@ -379,14 +394,17 @@ export function compile(ast: GoNode, ce: CompilationEnv = global_compile_environ
             instructions.push(jump_instruction);
             const alternative_address = instructions.length;
             jump_on_false_instruction.addr = alternative_address;
-            compile(ast.fb!, ce, instructions);
+            if (ast.fb) compile(ast.fb, ce, instructions);
             jump_instruction.addr = instructions.length;
             break;
         case "SendStatement":
             compile(ast.chan!, ce, instructions);
+            const chan_pos = instructions.at(-1)?.pos;
             compile(ast.expr!, ce, instructions);
-            instructions.push({ tag: 'SEND' });
+            instructions.push({ tag: 'SEND', pos: chan_pos });
             break;
+        // BUG
+        // inc and dec can not be simply compiled like this!
         case "IncStatement": // fall through
         case "DecStatement":
             compile({

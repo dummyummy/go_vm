@@ -7,10 +7,18 @@
     "@babel/cli": "^7.24.1",
     "@babel/core": "^7.24.4",
     "@babel/preset-env": "^7.24.4",
-    "antlr4": "^4.13.1-patch-1",
+    "@babel/preset-typescript": "^7.24.1",
+    "@types/jest": "^29.5.12",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.2",
     "typescript": "^5.4.5"
   },
   "scripts": {
-    "build": "npx tsc --project tsconfig.json"
+    "build": "npx tsc --project tsconfig.json",
+    "test": "yarn build && npx jest -i"
+  },
+  "dependencies": {
+    "@types/node": "^20.12.7",
+    "antlr4": "^4.13.1-patch-1"
   }
 }
