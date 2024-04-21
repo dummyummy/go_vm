@@ -378,13 +378,15 @@ export class Heap {
     Channel_write = async (chan: HeapAddress, val: HeapAddress) => {
         const cas = async () => {
             while (this.Channel_comp_and_swap_writing(chan)) {
-                await new Promise(resolve => setTimeout(resolve, 1));
+                // await new Promise(resolve => setTimeout(resolve, 1));
+                await new Promise(resolve => resolve(chan));
             }
         };
         await cas();
         const wait_full = async () => {
             while (this.Channel_full(chan)) {
-                await new Promise(resolve => setTimeout(resolve, 1));
+                // await new Promise(resolve => setTimeout(resolve, 1));
+                await new Promise(resolve => resolve(chan));
             }
         };
         await wait_full();
@@ -402,13 +404,15 @@ export class Heap {
     Channel_read = async (chan: HeapAddress) => {
         const cas = async () => {
             while (this.Channel_comp_and_swap_reading(chan)) {
-                await new Promise(resolve => setTimeout(resolve, 1));
+                // await new Promise(resolve => setTimeout(resolve, 1));
+                await new Promise(resolve => resolve(chan));
             }
         };
         await cas();
         const wait_empty = async () => {
             while (this.Channel_empty(chan)) {
-                await new Promise(resolve => setTimeout(resolve, 1));
+                // await new Promise(resolve => setTimeout(resolve, 1));
+                await new Promise(resolve => resolve(chan));
             }
         };
         await wait_empty();
