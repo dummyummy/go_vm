@@ -24,6 +24,6 @@
 
 ## TODO
 
-- `break` and `continue` instruction
-- more assignment forms(`+=`, `-=` and so on)
+- `break` and `continue` instruction ✅
+- more assignment forms(`+=`, `-=` and so on) ✅
 - more testcases
