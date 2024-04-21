@@ -11,6 +11,8 @@ interface OperandStack<T> {
     push(item: T): void;
 }
 
+var routine_id = 0;
+
 export class GoVM {
     /* ================ MICROCODE AND PRIMITIVE FUNCTIONS ================= */
     binop_microcode: Record<string, Function> = {
@@ -47,9 +49,11 @@ export class GoVM {
     H: Heap; // shared heap
     instrs: Instruction[] = [];
     builtin_array: Function[] = [];
+    rid: number;
 
     constructor(heap_size: number) {
         const H = Heap.make_heap(heap_size);
+        this.rid = 0;
         // creating global runtime environment
         const primitive_object = this.bind_builtin();
         const primitive_values = [...Object.values(primitive_object)];
@@ -234,11 +238,11 @@ export class GoVM {
                         frame_address,
                         go_routine.H.get_Closure_environment(fun),
                     );
-                    await go_routine.run(this.instrs);
+                    go_routine.run(this.instrs);
                 }
                 break;
             case 'SEND':
-                this.apply_send(this.OS.pop()!, this.OS.pop()!);
+                await this.apply_send(this.OS.pop()!, this.OS.pop()!);
                 this.OS.push(this.H.True);
                 break;
             // TODO: continue and break
@@ -268,6 +272,7 @@ export class GoVM {
 class GoRoutine extends GoVM {
     constructor(PC: number, E: HeapAddress, H: Heap, instrs: Instruction[]) {
         super(0);
+        this.rid = ++routine_id;
         this.H = H;
         this.E = this.H.Environment_duplicate(E);
         // a gorountine has different PC, OS and RTS
