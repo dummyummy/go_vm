@@ -194,11 +194,11 @@ export function compile(ast: GoNode, ce: CompilationEnv = global_compile_environ
             instructions.push(for_jof);
             compile((ast.body as GoNode).body as GoNode, for_ce, instructions);
             instructions.push({ tag: 'POP' });
+            instructions.push({ tag: 'CTAG' });
             if (ast.clause?.post) {
                 compile(ast.clause.post, for_ce, instructions);
                 instructions.push({ tag: 'POP' });
             }
-            instructions.push({ tag: 'CTAG' });
             const for_jmp = { tag: 'JMP' } as Instruction;
             for_jmp.addr = for_jmp_addr;
             instructions.push(for_jmp);

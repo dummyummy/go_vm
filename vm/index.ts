@@ -260,7 +260,24 @@ export class GoVM {
                 await this.apply_send(this.OS.pop()!, this.OS.pop()!);
                 this.OS.push(this.H.True);
                 break;
-            // TODO: continue and break
+            case 'CONT':
+                var scope_count = 0;
+                while (this.instrs[this.PC].tag != 'CTAG') {
+                    if (this.instrs[this.PC].tag == 'EXIT_SCOPE') scope_count++;
+                    if (this.instrs[this.PC].tag == 'ENTER_SCOPE') scope_count--;
+                    this.PC++;
+                }
+                while (scope_count-- > 0) this.exec({tag: 'EXIT_SCOPE'});
+                break;
+            case 'BREAK':
+                var scope_count = 0;
+                while (this.instrs[this.PC].tag != 'BTAG') {
+                    if (this.instrs[this.PC].tag == 'EXIT_SCOPE') scope_count++;
+                    if (this.instrs[this.PC].tag == 'ENTER_SCOPE') scope_count--;
+                    this.PC++;
+                }
+                while (scope_count-- > 0) this.exec({tag: 'EXIT_SCOPE'});
+                break;
             case "CTAG":
             case "BTAG":
                 break;
