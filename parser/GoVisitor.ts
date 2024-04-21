@@ -427,7 +427,7 @@ export default class GoVisitor extends GoBaseVisitor<GoNode> {
                 : ctx.integer()
                 ? ctx.integer().getText()
                 : ctx.string_()
-                ? ctx.string_().getText()
+                ? ctx.string_().getText().replace(/^"(.*)"$/, '$1')
                 : ctx.FLOAT_LIT().getText()
         }
     }
